@@ -1,6 +1,4 @@
 mod display;
-mod parser;
-mod types;
 
 use clap::Parser;
 use std::path::PathBuf;
@@ -36,7 +34,7 @@ fn main() {
         process::exit(1);
     }
 
-    let gguf = match parser::parse_gguf(&cli.file) {
+    let gguf = match gguf_inspect::parse_gguf(&cli.file) {
         Ok(g) => g,
         Err(e) => {
             eprintln!("Error parsing GGUF file: {e}");

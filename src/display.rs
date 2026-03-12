@@ -1,6 +1,6 @@
 use comfy_table::{Cell, Table};
 
-use crate::types::*;
+use gguf_inspect::types::*;
 
 /// Format bytes into a human-readable string.
 fn format_bytes(bytes: u64) -> String {

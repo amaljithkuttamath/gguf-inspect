@@ -58,6 +58,20 @@ gguf-inspect model.gguf --json
 gguf-inspect model.gguf --metadata --tensors
 ```
 
+## Results
+
+See [RESULTS.md](RESULTS.md) for a detailed analysis of a real Llama 3.2 3B Instruct model (Q4_K_M). It covers quantization distribution across 255 tensors, the GQA pattern visible in K/V projection shapes, and per-tensor size breakdowns.
+
+## Testing
+
+Run the full test suite (17 unit tests + 9 integration tests):
+
+```bash
+cargo test --verbose
+```
+
+The integration tests programmatically generate minimal GGUF files and verify parsing, including invalid-magic rejection, unsupported-version handling, multi-type metadata, and CLI output validation. No real model files are needed.
+
 ## What's in a GGUF file?
 
 GGUF (GPT-Generated Unified Format) is the standard binary format for quantized LLM weights, used by llama.cpp, Ollama, and similar inference tools. A single `.gguf` file contains everything needed to load a model:

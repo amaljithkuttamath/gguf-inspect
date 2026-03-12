@@ -315,3 +315,214 @@ impl GgufFile {
         self.tensors.iter().map(|t| t.size_bytes()).sum()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ggml_type_from_u32_known() {
+        assert_eq!(GgmlType::from_u32(0), GgmlType::F32);
+        assert_eq!(GgmlType::from_u32(1), GgmlType::F16);
+        assert_eq!(GgmlType::from_u32(2), GgmlType::Q4_0);
+        assert_eq!(GgmlType::from_u32(8), GgmlType::Q8_0);
+        assert_eq!(GgmlType::from_u32(12), GgmlType::Q4K);
+        assert_eq!(GgmlType::from_u32(14), GgmlType::Q6K);
+    }
+
+    #[test]
+    fn ggml_type_from_u32_unknown() {
+        assert_eq!(GgmlType::from_u32(99), GgmlType::Unknown(99));
+    }
+
+    #[test]
+    fn ggml_type_display() {
+        assert_eq!(format!("{}", GgmlType::F32), "F32");
+        assert_eq!(format!("{}", GgmlType::Q4K), "Q4_K");
+        assert_eq!(format!("{}", GgmlType::Q6K), "Q6_K");
+        assert_eq!(format!("{}", GgmlType::Unknown(42)), "unknown(42)");
+    }
+
+    #[test]
+    fn ggml_type_bits_per_weight() {
+        assert!((GgmlType::F32.bits_per_weight() - 32.0).abs() < f64::EPSILON);
+        assert!((GgmlType::F16.bits_per_weight() - 16.0).abs() < f64::EPSILON);
+        assert!((GgmlType::Q4_0.bits_per_weight() - 4.5).abs() < f64::EPSILON);
+        // Unknown falls back to 4.0
+        assert!((GgmlType::Unknown(99).bits_per_weight() - 4.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tensor_info_element_count() {
+        let t = TensorInfo {
+            name: "test".into(),
+            dimensions: vec![3, 4, 5],
+            dtype: GgmlType::F32,
+            offset: 0,
+        };
+        assert_eq!(t.element_count(), 60);
+    }
+
+    #[test]
+    fn tensor_info_element_count_empty_dims() {
+        let t = TensorInfo {
+            name: "empty".into(),
+            dimensions: vec![],
+            dtype: GgmlType::F32,
+            offset: 0,
+        };
+        assert_eq!(t.element_count(), 0);
+    }
+
+    #[test]
+    fn tensor_info_element_count_1d() {
+        let t = TensorInfo {
+            name: "bias".into(),
+            dimensions: vec![128],
+            dtype: GgmlType::F32,
+            offset: 0,
+        };
+        assert_eq!(t.element_count(), 128);
+    }
+
+    #[test]
+    fn tensor_info_size_bytes_f32() {
+        let t = TensorInfo {
+            name: "w".into(),
+            dimensions: vec![8],
+            dtype: GgmlType::F32,
+            offset: 0,
+        };
+        // 8 elements * 32 bits / 8 = 32 bytes
+        assert_eq!(t.size_bytes(), 32);
+    }
+
+    #[test]
+    fn tensor_info_size_bytes_q4k() {
+        let t = TensorInfo {
+            name: "w".into(),
+            dimensions: vec![1024, 1024],
+            dtype: GgmlType::Q4K,
+            offset: 0,
+        };
+        // 1048576 elements * 4.5 bits / 8 = 589824 bytes
+        let expected = (1048576.0 * 4.5 / 8.0) as u64;
+        assert_eq!(t.size_bytes(), expected);
+    }
+
+    #[test]
+    fn tensor_info_shape_str() {
+        let t = TensorInfo {
+            name: "w".into(),
+            dimensions: vec![3072, 1024],
+            dtype: GgmlType::Q4K,
+            offset: 0,
+        };
+        assert_eq!(t.shape_str(), "3072 x 1024");
+    }
+
+    #[test]
+    fn gguf_file_total_parameters() {
+        let file = GgufFile {
+            version: 3,
+            metadata: vec![],
+            tensors: vec![
+                TensorInfo {
+                    name: "a".into(),
+                    dimensions: vec![100, 200],
+                    dtype: GgmlType::F16,
+                    offset: 0,
+                },
+                TensorInfo {
+                    name: "b".into(),
+                    dimensions: vec![50],
+                    dtype: GgmlType::F32,
+                    offset: 0,
+                },
+            ],
+            file_size: 0,
+        };
+        assert_eq!(file.total_parameters(), 20050);
+    }
+
+    #[test]
+    fn gguf_file_metadata_lookup() {
+        let file = GgufFile {
+            version: 3,
+            metadata: vec![
+                ("general.architecture".into(), GgufValue::String("llama".into())),
+                ("general.name".into(), GgufValue::String("test-model".into())),
+                ("llama.block_count".into(), GgufValue::Uint32(28)),
+            ],
+            tensors: vec![],
+            file_size: 0,
+        };
+        assert_eq!(file.architecture(), Some("llama"));
+        assert_eq!(file.model_name(), Some("test-model"));
+        assert_eq!(
+            file.arch_metadata("block_count").and_then(|v| v.as_u32()),
+            Some(28)
+        );
+        assert!(file.get_metadata("nonexistent").is_none());
+    }
+
+    #[test]
+    fn gguf_value_type_from_u32() {
+        assert_eq!(GgufValueType::from_u32(0), Some(GgufValueType::Uint8));
+        assert_eq!(GgufValueType::from_u32(4), Some(GgufValueType::Uint32));
+        assert_eq!(GgufValueType::from_u32(6), Some(GgufValueType::Float32));
+        assert_eq!(GgufValueType::from_u32(7), Some(GgufValueType::Bool));
+        assert_eq!(GgufValueType::from_u32(8), Some(GgufValueType::String));
+        assert_eq!(GgufValueType::from_u32(9), Some(GgufValueType::Array));
+        assert_eq!(GgufValueType::from_u32(99), None);
+    }
+
+    #[test]
+    fn gguf_value_conversions() {
+        assert_eq!(GgufValue::Uint32(42).as_u32(), Some(42));
+        assert_eq!(GgufValue::String("hello".into()).as_u32(), None);
+
+        assert_eq!(GgufValue::Uint64(99).as_u64(), Some(99));
+        assert_eq!(GgufValue::Bool(true).as_u64(), None);
+
+        assert_eq!(GgufValue::String("hi".into()).as_str(), Some("hi"));
+        assert_eq!(GgufValue::Uint32(1).as_str(), None);
+
+        let arr = GgufValue::Array(vec![GgufValue::Uint32(1), GgufValue::Uint32(2)]);
+        assert_eq!(arr.as_array().map(|a| a.len()), Some(2));
+        assert!(GgufValue::Bool(false).as_array().is_none());
+    }
+
+    #[test]
+    fn gguf_value_display() {
+        assert_eq!(format!("{}", GgufValue::Uint32(42)), "42");
+        assert_eq!(format!("{}", GgufValue::Bool(true)), "true");
+        assert_eq!(format!("{}", GgufValue::String("hello".into())), "hello");
+
+        let small_arr = GgufValue::Array(vec![GgufValue::Uint32(1), GgufValue::Uint32(2)]);
+        assert_eq!(format!("{}", small_arr), "[1, 2]");
+
+        let big_arr = GgufValue::Array(vec![
+            GgufValue::Uint32(1),
+            GgufValue::Uint32(2),
+            GgufValue::Uint32(3),
+            GgufValue::Uint32(4),
+            GgufValue::Uint32(5),
+            GgufValue::Uint32(6),
+        ]);
+        assert_eq!(format!("{}", big_arr), "[1, 2, 3, ... (6 total)]");
+    }
+
+    #[test]
+    fn file_type_name_known() {
+        assert_eq!(file_type_name(0), "F32");
+        assert_eq!(file_type_name(1), "F16");
+        assert_eq!(file_type_name(15), "Q4_K_M");
+        assert_eq!(file_type_name(18), "Q6_K");
+    }
+
+    #[test]
+    fn file_type_name_unknown() {
+        assert_eq!(file_type_name(255), "unknown");
+    }
+}
