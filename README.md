@@ -1,3 +1,6 @@
+[![CI](https://github.com/amaljithkuttamath/gguf-inspect/actions/workflows/ci.yml/badge.svg)](https://github.com/amaljithkuttamath/gguf-inspect/actions/workflows/ci.yml)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+
 # gguf-inspect
 
 A fast Rust CLI that reads GGUF model files and prints useful metadata about the model architecture, tensors, and quantization.
